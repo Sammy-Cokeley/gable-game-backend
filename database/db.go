@@ -12,10 +12,10 @@ import (
 var DB *sql.DB
 
 func ConnectDB() {
-	dsn := fmt.Sprintf(
-		"host=localhost user=%s password=%s dbname=%s sslmode=disable",
-		os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"),
-	)
+	dsn := os.Getenv("DATABASE_URL")
+	if dns == "" {
+		log.Fatal("DATABASE_URL is not set")
+	}
 
 	var err error
 	DB, err = sql.Open("postgres", dsn)
