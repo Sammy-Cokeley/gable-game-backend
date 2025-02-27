@@ -1,4 +1,4 @@
-package main
+package initDailyWrestlers
 
 import (
 	"database/sql"
