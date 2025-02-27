@@ -1,0 +1,41 @@
+# Binaries and executables
+/app
+*.exe
+*.out
+*.dll
+*.so
+*.dylib
+
+# Go modules and dependencies
+/bin/
+/pkg/
+/go.sum
+/go.mod
+
+# Build artifacts
+*.o
+*.a
+*.log
+*.cache
+*.test
+
+# IDE and editor-specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Vendor dependencies (if using `go mod vendor`)
+/vendor/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Docker-related files
+docker-compose.override.yml
