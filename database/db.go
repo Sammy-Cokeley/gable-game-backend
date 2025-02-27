@@ -13,7 +13,7 @@ var DB *sql.DB
 
 func ConnectDB() {
 	dsn := os.Getenv("DATABASE_URL")
-	if dns == "" {
+	if dsn == "" {
 		log.Fatal("DATABASE_URL is not set")
 	}
 
