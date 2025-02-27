@@ -1,4 +1,5 @@
-package initDailyWrestlers
+go: build ignore
+package main
 
 import (
 	"database/sql"
