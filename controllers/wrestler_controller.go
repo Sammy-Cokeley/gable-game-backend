@@ -40,7 +40,7 @@ func GetWrestlersByQuery(c *fiber.Ctx) error {
 }
 
 func GetDailyWrestler(c *fiber.Ctx) error {
-	gameStartDate := time.Date(2024, 11, 19, 0, 0, 0, 0, time.UTC)
+	gameStartDate := time.Date(2024, 11, 20, 0, 0, 0, 0, time.UTC)
 	today := time.Now().UTC()
 	daysSinceStart := int(today.Sub(gameStartDate).Hours() / 24)
 
