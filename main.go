@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -14,14 +13,20 @@ import (
 
 func main() {
 	// Load env vars from .env file
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+	if os.Getenv("RENDER") == "" {
+		err := godotenv.Load()
+		if err != nil {
+			log.Println("No .env file found, continuing with system environment variables")
+		}
 	}
-
 	// Load environment variables
 	database.ConnectDB()
 
-	// Create Fiber app
+	port := os.Getenv("PORT")
+	if port == "" {
+		log.Fatal("PORT environment variable not set")
+	}
+
 	app := fiber.New()
 
 	app.Use(cors.New(cors.Config{
@@ -34,10 +39,6 @@ func main() {
 	routes.WrestlerRoutes(app)
 
 	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3000"
-	}
-	fmt.Println("Server running on port " + port)
+	log.Println("Server running on port " + port)
 	log.Fatal(app.Listen(":" + port))
 }
