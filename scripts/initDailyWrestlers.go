@@ -29,10 +29,10 @@ func main() {
 }
 
 func ConnectDB() {
-	dsn := fmt.Sprintf(
-		"host=localhost user=%s password=%s dbname=%s sslmode=disable",
-		os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"),
-	)
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL is not set")
+	}
 
 	var err error
 	DB, err = sql.Open("postgres", dsn)
@@ -49,7 +49,7 @@ func ConnectDB() {
 
 func initDailyWrestlers() error {
 	// Get all wrestler IDs
-	rows, err := DB.Query("SELECT id FROM wrestlers")
+	rows, err := DB.Query("SELECT id FROM wrestlers_2025")
 	if err != nil {
 		return err
 	}
@@ -81,10 +81,13 @@ func initDailyWrestlers() error {
 	}
 	defer stmt.Close()
 
+	startDate := time.Date(2025, 4, 1, 0, 0, 0, 0, time.UTC)
+
 	for i, id := range wrestlerIDs {
-		_, err := stmt.Exec(i, id)
+		day := startDate.AddDate(0, 0, i)
+		_, err := stmt.Exec(day, id)
 		if err != nil {
-			return err
+			return fmt.Errorf("Error inserting wrestler ID %d on day %d: %v", id, i, err)
 		}
 	}
 
