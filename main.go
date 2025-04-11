@@ -7,16 +7,16 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	//"github.com/joho/godotenv"
+	"github.com/joho/godotenv"
 	"gable-backend/database"
 	"gable-backend/routes"
 )
 
 func main() {
 	// Load env vars from .env file
-	// if err := godotenv.Load(); err != nil {
-	// 	log.Fatal("Error loading .env file")
-	// }
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error loading .env file")
+	}
 
 	// Load environment variables
 	database.ConnectDB()

@@ -6,6 +6,10 @@ import (
 )
 
 func WrestlerRoutes(app *fiber.App) {
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Backend is up!")
+	})
+
 	api := app.Group("/api")
 
 	api.Get("/wrestlers", controllers.GetWrestlersByQuery)
