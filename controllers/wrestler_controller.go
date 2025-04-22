@@ -6,11 +6,11 @@ import (
 
 	"gable-backend/database"
 	"gable-backend/models"
+
 	"github.com/gofiber/fiber/v2"
 )
 
 func GetWrestlersByQuery(c *fiber.Ctx) error {
-	log.Println("Getting daily wrestler")
 
 	name := c.Query("name")
 
@@ -20,7 +20,7 @@ func GetWrestlersByQuery(c *fiber.Ctx) error {
 			return c.Status(500).SendString(err.Error())
 		}
 		defer rows.Close()
-	
+
 		var wrestlers []models.Wrestler
 		for rows.Next() {
 			var w models.Wrestler
@@ -42,8 +42,8 @@ func GetWrestlersByQuery(c *fiber.Ctx) error {
 }
 
 func GetDailyWrestler(c *fiber.Ctx) error {
-	today := time.Now().UTC().Format("2006-01-02")
-
+	loc, _ := time.LoadLocation("America/New_York")
+	today := time.Now().In(loc).Format("2006-01-02")
 
 	var wrestlerID int
 	err := database.DB.QueryRow("SELECT wrestler_id FROM daily_wrestlers WHERE day = $1::date", today).Scan(&wrestlerID)
