@@ -14,11 +14,18 @@ func WrestlerRoutes(app *fiber.App) {
 
 	api := app.Group("/api")
 
+	//GET Requests
 	api.Get("/wrestlers", controllers.GetWrestlersByQuery)
 	api.Get("/daily", controllers.GetDailyWrestler)
+	api.Get("/me", middleware.RequireAuth, controllers.GetMe)
+	api.Get("/user/guesses", middleware.RequireAuth, controllers.GetUserGuesses)
+	api.Get("/user/stats", middleware.RequireAuth, controllers.GetUserStats)
+
+	//POST Requests
 	api.Post("/register", controllers.Register)
 	api.Post("/login", controllers.Login)
-	api.Get("/me", middleware.RequireAuth, controllers.GetMe)
 	api.Post("/verify-email", controllers.VerifyEmail)
 	api.Post("/resend-verification", controllers.ResendVerification)
+	api.Post("/user/guess", middleware.RequireAuth, controllers.SubmitUserGuess)
+	api.Post("/user/stats", middleware.RequireAuth, controllers.UpdateUserStats)
 }

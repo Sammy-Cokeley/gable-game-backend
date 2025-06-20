@@ -3,12 +3,15 @@ package controllers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"gable-backend/database"
 	"gable-backend/mail"
 	"gable-backend/models"
+	"log"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -39,31 +42,38 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to hash password"})
 	}
 
-	// Generate verification token
 	token, err := generateVerificationToken()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to generate verification token"})
 	}
 
-	_, err = database.DB.Exec(`
-        INSERT INTO users (email, password_hash, verified, verification_token)
-        VALUES ($1, $2, $3, $4)
-    `, data.Email, string(hash), false, token)
-	if err != nil {
-		fmt.Println("error: ", err)
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "User already exists or invalid data"})
+	result := database.DB.QueryRow(`
+		INSERT INTO users (email, password_hash, verified, verification_token)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id
+		`, data.Email, string(hash), false, token)
+
+	var userID int
+	if err = result.Scan(&userID); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Could not create"})
 	}
 
-	// Send verification email
+	_, err = database.DB.Exec(`
+		INSERT INTO user_stats (user_id, win_distribution)
+		VALUES ($1, '{}'::jsonb)
+		`, userID)
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to create user_stats"})
+	}
+
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s&email=%s",
 		os.Getenv("FRONTEND_URL"),
 		url.QueryEscape(token),
 		url.QueryEscape(data.Email))
 
-	// Using a mail package you'll create
 	err = mail.SendVerificationEmail(data.Email, verificationURL)
 	if err != nil {
-		// Log error but don't return it to user
 		fmt.Printf("Failed to send verification email: %v\n", err)
 	}
 
@@ -107,7 +117,6 @@ func ResendVerification(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
 	}
 
-	// Check if user exists and is not verified
 	var verified bool
 	var token string
 
@@ -116,7 +125,6 @@ func ResendVerification(c *fiber.Ctx) error {
     `, data.Email).Scan(&verified, &token)
 
 	if err != nil {
-		// Don't reveal if email exists
 		return c.JSON(fiber.Map{"message": "If your email exists in our system, a verification link has been sent"})
 	}
 
@@ -124,7 +132,6 @@ func ResendVerification(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"message": "Your email is already verified"})
 	}
 
-	// Generate new token if needed
 	if token == "" {
 		token, err = generateVerificationToken()
 		if err != nil {
@@ -140,7 +147,6 @@ func ResendVerification(c *fiber.Ctx) error {
 		}
 	}
 
-	// Send verification email
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s&email=%s",
 		os.Getenv("FRONTEND_URL"),
 		url.QueryEscape(token),
@@ -148,7 +154,6 @@ func ResendVerification(c *fiber.Ctx) error {
 
 	err = mail.SendVerificationEmail(data.Email, verificationURL)
 	if err != nil {
-		// Log error but don't reveal to user
 		fmt.Printf("Failed to send verification email: %v\n", err)
 	}
 
@@ -196,7 +201,13 @@ func Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create token"})
 	}
 
-	return c.JSON(fiber.Map{"token": tokenString})
+	return c.JSON(fiber.Map{
+		"token": tokenString,
+		"user": fiber.Map{
+			"id":    user.ID,
+			"email": user.Email,
+		},
+	})
 }
 
 func GetMe(c *fiber.Ctx) error {
@@ -213,4 +224,226 @@ func GetMe(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(userData)
+}
+
+func SubmitUserGuess(c *fiber.Ctx) error {
+	userID := c.Locals("user_id")
+	if userID == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	var input models.GuessInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid input",
+		})
+	}
+
+	parsedDate, err := time.Parse("2006-01-02", input.GuessDate)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid date format. Use YYYY-MM-DD",
+		})
+	}
+
+	_, err = database.DB.Exec(`
+		INSERT INTO user_guesses (user_id, wrestler_id, guess_date, guess_order)
+		VALUES ($1, $2, $3, $4)
+	`, userID, input.WrestlerID, parsedDate, input.GuessOrder)
+
+	if err != nil {
+		fmt.Printf("Insert error: %v\nuserID: %v, wrestlerID: %v, date: %v, order: %v\n",
+			err, userID, input.WrestlerID, parsedDate, input.GuessOrder)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to save guess",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Guess submitted successfully",
+	})
+}
+
+func GetUserGuesses(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+
+	dateStr := c.Query("date")
+	var targetDate time.Time
+	var err error
+
+	if dateStr == "" {
+		loc, _ := time.LoadLocation("America/New_York")
+		targetDate = time.Now().In(loc)
+	} else {
+		targetDate, err = time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Invalid date format. Use YYYY-MM-DD",
+			})
+		}
+	}
+
+	rows, err := database.DB.Query(`
+		SELECT g.id, g.wrestler_id, w.name, w.weight_class, w.year, w.team, w.conference,
+		       w.win_percentage, w.ncaa_finish, g.guess_order
+		FROM user_guesses g
+		JOIN wrestlers_2025 w ON g.wrestler_id = w.id
+		WHERE g.user_id = $1 AND g.guess_date = $2
+		ORDER BY g.guess_order ASC
+	`, userID, targetDate.Format("2006-01-02"))
+
+	if err != nil {
+		fmt.Println("DB query error:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Could not load guesses",
+		})
+	}
+	defer rows.Close()
+
+	var guesses []models.Guess
+	for rows.Next() {
+		var g models.Guess
+		err := rows.Scan(
+			new(interface{}),
+			new(interface{}),
+			&g.Name, &g.WeightClass, &g.Year, &g.Team, &g.Conference,
+			&g.WinPercentage, &g.NcaaFinish, &g.GuessOrder,
+		)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Error reading guess",
+			})
+		}
+		guesses = append(guesses, g)
+	}
+
+	return c.JSON(fiber.Map{
+		"guesses": guesses,
+	})
+}
+
+func UpdateUserStats(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+
+	type Input struct {
+		Result  string `json:"result"`
+		Guesses int    `json:"guesses"` // 1–8
+	}
+
+	var input Input
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
+	}
+
+	if input.Result != "win" && input.Result != "loss" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid result type"})
+	}
+
+	loc, _ := time.LoadLocation("America/New_York")
+	today := time.Now().In(loc).Truncate(24 * time.Hour)
+	yesterday := today.AddDate(0, 0, -1)
+
+	var stats struct {
+		TotalWins     int
+		TotalLosses   int
+		CurrentStreak int
+		MaxStreak     int
+		LastWinDate   *time.Time
+		WinDist       map[string]int
+	}
+
+	row := database.DB.QueryRow(`
+		SELECT total_wins, total_losses, current_streak, max_streak, last_win_date, win_distribution
+		FROM user_stats
+		WHERE user_id = $1
+	`, userID)
+
+	var winDistRaw []byte
+	err := row.Scan(&stats.TotalWins, &stats.TotalLosses, &stats.CurrentStreak, &stats.MaxStreak, &stats.LastWinDate, &winDistRaw)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Could not load stats"})
+	}
+
+	// Unmarshal distribution JSON
+	if err := json.Unmarshal(winDistRaw, &stats.WinDist); err != nil {
+		stats.WinDist = map[string]int{} // fallback
+	}
+
+	if input.Result == "win" {
+		// Increment total wins
+		stats.TotalWins += 1
+
+		if stats.LastWinDate != nil {
+
+			if stats.LastWinDate.Equal(yesterday) {
+				log.Println("inside second if statement")
+				stats.CurrentStreak += 1
+			} else {
+				log.Println("inside else statement")
+				stats.CurrentStreak = 1
+			}
+		}
+		if stats.CurrentStreak > stats.MaxStreak {
+			stats.MaxStreak = stats.CurrentStreak
+		}
+
+		// Update last win date
+		stats.LastWinDate = &today
+
+		// Update win distribution
+		key := strconv.Itoa(input.Guesses)
+		stats.WinDist[key] += 1
+
+	} else if input.Result == "loss" {
+		stats.TotalLosses += 1
+		stats.CurrentStreak = 0
+	}
+
+	// Marshal updated distribution
+	updatedDist, _ := json.Marshal(stats.WinDist)
+
+	_, err = database.DB.Exec(`
+		UPDATE user_stats
+		SET total_wins = $1,
+		    total_losses = $2,
+		    current_streak = $3,
+		    max_streak = $4,
+		    last_win_date = $5,
+		    win_distribution = $6
+		WHERE user_id = $7
+	`, stats.TotalWins, stats.TotalLosses, stats.CurrentStreak, stats.MaxStreak, stats.LastWinDate, updatedDist, userID)
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update stats"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Stats updated"})
+}
+
+func GetUserStats(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+
+	var stats struct {
+		TotalWins       int             `json:"total_wins"`
+		TotalLosses     int             `json:"total_losses"`
+		CurrentStreak   int             `json:"current_streak"`
+		MaxStreak       int             `json:"max_streak"`
+		LastWinDate     *string         `json:"last_win_date"`
+		WinDistribution json.RawMessage `json:"win_distribution"`
+	}
+
+	err := database.DB.QueryRow(`
+		SELECT total_wins, total_losses, current_streak, max_streak, last_win_date, win_distribution
+		FROM user_stats
+		WHERE user_id = $1
+	`, userID).Scan(&stats.TotalWins, &stats.TotalLosses, &stats.CurrentStreak, &stats.MaxStreak, &stats.LastWinDate, &stats.WinDistribution)
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve stats"})
+	}
+
+	return c.JSON(stats)
+
 }
