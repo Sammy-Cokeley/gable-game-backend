@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"gable-backend/database"
 	"os"
 	"strings"
 
@@ -38,5 +39,13 @@ func RequireAuth(c *fiber.Ctx) error {
 	}
 
 	c.Locals("user_id", int(userIDFloat))
+
+	var email string
+	err = database.DB.QueryRow("SELECT email FROM users WHERE id = $1", int(userIDFloat)).Scan(&email)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "User not found"})
+	}
+	c.Locals("userEmail", email)
+
 	return c.Next()
 }
