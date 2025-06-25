@@ -8,7 +8,6 @@ import (
 	"gable-backend/database"
 	"gable-backend/mail"
 	"gable-backend/models"
-	"log"
 	"net/url"
 	"os"
 	"strconv"
@@ -273,16 +272,18 @@ func GetUserGuesses(c *fiber.Ctx) error {
 	var targetDate time.Time
 	var err error
 
+	loc, _ := time.LoadLocation("America/New_York")
+
 	if dateStr == "" {
-		loc, _ := time.LoadLocation("America/New_York")
-		targetDate = time.Now().In(loc)
+		targetDate = time.Now().In(loc).Truncate(24 * time.Hour)
 	} else {
-		targetDate, err = time.Parse("2006-01-02", dateStr)
+		targetDate, err = time.ParseInLocation("2006-01-02", dateStr, loc)
 		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": "Invalid date format. Use YYYY-MM-DD",
 			})
 		}
+		targetDate = targetDate.Truncate(24 * time.Hour)
 	}
 
 	rows, err := database.DB.Query(`
@@ -376,14 +377,14 @@ func UpdateUserStats(c *fiber.Ctx) error {
 		stats.TotalWins += 1
 
 		if stats.LastWinDate != nil {
-
-			if stats.LastWinDate.Equal(yesterday) {
-				log.Println("inside second if statement")
-				stats.CurrentStreak += 1
+			lastWin := stats.LastWinDate.In(loc).Truncate(24 * time.Hour)
+			if lastWin.Equal(yesterday) {
+				stats.CurrentStreak++
 			} else {
-				log.Println("inside else statement")
 				stats.CurrentStreak = 1
 			}
+		} else {
+			stats.CurrentStreak = 1
 		}
 		if stats.CurrentStreak > stats.MaxStreak {
 			stats.MaxStreak = stats.CurrentStreak
