@@ -241,6 +241,7 @@ func SubmitUserGuess(c *fiber.Ctx) error {
 	}
 
 	parsedDate, err := time.Parse("2006-01-02", input.GuessDate)
+
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid date format. Use YYYY-MM-DD",
@@ -268,23 +269,8 @@ func SubmitUserGuess(c *fiber.Ctx) error {
 func GetUserGuesses(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(int)
 
-	dateStr := c.Query("date")
-	var targetDate time.Time
-	var err error
-
 	loc, _ := time.LoadLocation("America/New_York")
-
-	if dateStr == "" {
-		targetDate = time.Now().In(loc).Truncate(24 * time.Hour)
-	} else {
-		targetDate, err = time.ParseInLocation("2006-01-02", dateStr, loc)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"error": "Invalid date format. Use YYYY-MM-DD",
-			})
-		}
-		targetDate = targetDate.Truncate(24 * time.Hour)
-	}
+	dateStr := time.Now().In(loc).Format("2006-01-02")
 
 	rows, err := database.DB.Query(`
 		SELECT g.id, g.wrestler_id, w.name, w.weight_class, w.year, w.team, w.conference,
@@ -293,7 +279,7 @@ func GetUserGuesses(c *fiber.Ctx) error {
 		JOIN wrestlers_2025 w ON g.wrestler_id = w.id
 		WHERE g.user_id = $1 AND g.guess_date = $2
 		ORDER BY g.guess_order ASC
-	`, userID, targetDate.Format("2006-01-02"))
+	`, userID, dateStr)
 
 	if err != nil {
 		fmt.Println("DB query error:", err)
@@ -343,8 +329,10 @@ func UpdateUserStats(c *fiber.Ctx) error {
 	}
 
 	loc, _ := time.LoadLocation("America/New_York")
-	today := time.Now().In(loc).Truncate(24 * time.Hour)
+	today := time.Now().In(loc)
 	yesterday := today.AddDate(0, 0, -1)
+
+	yesterdayStr := yesterday.Format("2006-01-02")
 
 	var stats struct {
 		TotalWins     int
@@ -377,8 +365,8 @@ func UpdateUserStats(c *fiber.Ctx) error {
 		stats.TotalWins += 1
 
 		if stats.LastWinDate != nil {
-			lastWin := stats.LastWinDate.In(loc).Truncate(24 * time.Hour)
-			if lastWin.Equal(yesterday) {
+			lastWin := stats.LastWinDate.Format("2006-01-02")
+			if lastWin == yesterdayStr {
 				stats.CurrentStreak++
 			} else {
 				stats.CurrentStreak = 1
