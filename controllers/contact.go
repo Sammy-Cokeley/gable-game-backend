@@ -17,7 +17,7 @@ type ContactForm struct {
 
 func ContactHandler(c *fiber.Ctx) error {
 	// Extract user email from context
-	emailValue := c.Locals("userEmail")
+	emailValue := c.Locals("email")
 	email, ok := emailValue.(string)
 	if !ok || strings.TrimSpace(email) == "" {
 		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{

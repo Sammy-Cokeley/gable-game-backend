@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -188,9 +189,9 @@ func Login(c *fiber.Ctx) error {
 		})
 	}
 
-	// Generate JWT (same as before)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID,
+		"email":   strings.ToLower(strings.TrimSpace(user.Email)),
 		"exp":     time.Now().Add(time.Hour * 72).Unix(),
 	})
 
