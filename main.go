@@ -22,6 +22,7 @@ func main() {
 	}
 	// Load environment variables
 	database.ConnectDB()
+	database.RunMigrations()
 
 	port := os.Getenv("PORT")
 	if port == "" {
