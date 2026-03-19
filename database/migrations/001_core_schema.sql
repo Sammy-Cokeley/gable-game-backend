@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- ---------------------------------------------------------------------------
 -- Seasons
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.season (
+CREATE TABLE IF NOT EXISTS core.season (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     year       INT  NOT NULL UNIQUE,   -- e.g. 2025 means the 2024-25 season
     label      TEXT NOT NULL,          -- e.g. "2024-25"
@@ -22,7 +22,7 @@ CREATE TABLE core.season (
 -- ---------------------------------------------------------------------------
 -- Conferences
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.conference (
+CREATE TABLE IF NOT EXISTS core.conference (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name       TEXT NOT NULL UNIQUE,
     slug       TEXT NOT NULL UNIQUE,
@@ -32,7 +32,7 @@ CREATE TABLE core.conference (
 -- ---------------------------------------------------------------------------
 -- Schools
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.school (
+CREATE TABLE IF NOT EXISTS core.school (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name       TEXT NOT NULL UNIQUE,
     short_name TEXT,
@@ -43,7 +43,7 @@ CREATE TABLE core.school (
 -- ---------------------------------------------------------------------------
 -- School ↔ Conference ↔ Season membership
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.school_conference_season (
+CREATE TABLE IF NOT EXISTS core.school_conference_season (
     school_id     UUID NOT NULL REFERENCES core.school(id),
     conference_id UUID NOT NULL REFERENCES core.conference(id),
     season_id     UUID NOT NULL REFERENCES core.season(id),
@@ -53,7 +53,7 @@ CREATE TABLE core.school_conference_season (
 -- ---------------------------------------------------------------------------
 -- Weight classes
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.weight_class (
+CREATE TABLE IF NOT EXISTS core.weight_class (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     label      TEXT NOT NULL UNIQUE,  -- e.g. "125", "HWT"
     pounds     INT,                   -- NULL for HWT
@@ -70,12 +70,13 @@ INSERT INTO core.weight_class (label, pounds, sort_order) VALUES
     ('174',  174, 7),
     ('184',  184, 8),
     ('197',  197, 9),
-    ('285',  285, 10);
+    ('285',  285, 10)
+ON CONFLICT (label) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- Wrestlers (canonical identity — one row per person, ever)
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.wrestler (
+CREATE TABLE IF NOT EXISTS core.wrestler (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     full_name      TEXT NOT NULL,
     slug           TEXT NOT NULL UNIQUE,   -- e.g. "robinson-vincent-penn-state"
@@ -86,7 +87,7 @@ CREATE TABLE core.wrestler (
 -- ---------------------------------------------------------------------------
 -- Wrestler aliases (alternative spellings / source variations)
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.wrestler_alias (
+CREATE TABLE IF NOT EXISTS core.wrestler_alias (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     wrestler_id UUID NOT NULL REFERENCES core.wrestler(id) ON DELETE CASCADE,
     alias       TEXT NOT NULL,
@@ -98,7 +99,7 @@ CREATE TABLE core.wrestler_alias (
 -- ---------------------------------------------------------------------------
 -- Wrestler seasons (roster entry — one row per wrestler per season)
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.wrestler_season (
+CREATE TABLE IF NOT EXISTS core.wrestler_season (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     wrestler_id     UUID NOT NULL REFERENCES core.wrestler(id),
     season_id       UUID NOT NULL REFERENCES core.season(id),
@@ -107,13 +108,13 @@ CREATE TABLE core.wrestler_season (
     class_year      TEXT,            -- FR, SO, JR, SR, RS-FR, etc.
     record_wins     INT,
     record_losses   INT,
-    win_percentage  NUMERIC(5,4),    -- computed, stored for convenience
+    win_percentage  NUMERIC,         -- stored for convenience
     ncaa_finish     TEXT,            -- e.g. "1st", "All-American", "DNQ"
     metadata        JSONB,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (wrestler_id, season_id)
 );
 
-CREATE INDEX ON core.wrestler_season (season_id);
-CREATE INDEX ON core.wrestler_season (school_id);
-CREATE INDEX ON core.wrestler_season (weight_class_id);
+CREATE INDEX IF NOT EXISTS wrestler_season_season_id_idx    ON core.wrestler_season (season_id);
+CREATE INDEX IF NOT EXISTS wrestler_season_school_id_idx    ON core.wrestler_season (school_id);
+CREATE INDEX IF NOT EXISTS wrestler_season_wc_id_idx        ON core.wrestler_season (primary_weight_class_id);

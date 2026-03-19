@@ -4,7 +4,7 @@
 -- ---------------------------------------------------------------------------
 -- Ingest batches — one row per import job
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.ingest_batch (
+CREATE TABLE IF NOT EXISTS core.ingest_batch (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     source       TEXT NOT NULL,   -- e.g. "wrestlestat", "csv_rankings", "manual"
     season_id    UUID REFERENCES core.season(id),
@@ -19,7 +19,7 @@ CREATE TABLE core.ingest_batch (
 -- ---------------------------------------------------------------------------
 -- Ingest errors — one row per failed record within a batch
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.ingest_error (
+CREATE TABLE IF NOT EXISTS core.ingest_error (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     batch_id      UUID NOT NULL REFERENCES core.ingest_batch(id) ON DELETE CASCADE,
     entity_type   TEXT NOT NULL,   -- e.g. "wrestler", "ranking_entry"
@@ -28,16 +28,19 @@ CREATE TABLE core.ingest_error (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ON core.ingest_error (batch_id);
+CREATE INDEX IF NOT EXISTS ingest_error_batch_id_idx ON core.ingest_error (ingest_batch_id);
 
 -- ---------------------------------------------------------------------------
--- Legacy wrestler map — bridges wrestlers_2025.id → core.wrestler.id
--- Allows the legacy game tables to stay unchanged while canonical data grows.
+-- Legacy wrestler map — bridges any legacy table's ID → core.wrestler.id
+-- Structure matches the schema established on Render (56052cd).
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.legacy_wrestler_map (
-    legacy_id   INT  NOT NULL UNIQUE,   -- wrestlers_2025.id
-    wrestler_id UUID NOT NULL REFERENCES core.wrestler(id),
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS core.legacy_wrestler_map (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    legacy_table TEXT NOT NULL,   -- e.g. 'wrestlers_2025'
+    legacy_id    TEXT NOT NULL,   -- stringified legacy PK
+    wrestler_id  UUID NOT NULL REFERENCES core.wrestler(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (legacy_table, legacy_id)
 );
 
-CREATE INDEX ON core.legacy_wrestler_map (wrestler_id);
+CREATE INDEX IF NOT EXISTS legacy_wrestler_map_wrestler_id_idx ON core.legacy_wrestler_map (wrestler_id);

@@ -24,6 +24,10 @@ func main() {
 	database.ConnectDB()
 	database.RunMigrations()
 
+	if os.Getenv("JWT_SECRET") == "" {
+		log.Fatal("JWT_SECRET environment variable not set")
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		log.Fatal("PORT environment variable not set")
@@ -39,6 +43,7 @@ func main() {
 
 	// Setup routes
 	routes.WrestlerRoutes(app)
+	routes.PlatformRoutes(app)
 
 	// Start server
 	log.Println("Server running on port " + port)

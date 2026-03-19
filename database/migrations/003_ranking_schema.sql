@@ -6,19 +6,19 @@
 -- ---------------------------------------------------------------------------
 -- Ranking sources  (Flo, NCAA, TrackWrestling, etc.)
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.ranking_source (
-    id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name      TEXT NOT NULL UNIQUE,
-    slug      TEXT NOT NULL UNIQUE,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    notes     TEXT,
+CREATE TABLE IF NOT EXISTS core.ranking_source (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name       TEXT NOT NULL UNIQUE,
+    slug       TEXT NOT NULL UNIQUE,
+    is_active  BOOLEAN NOT NULL DEFAULT true,
+    notes      TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ---------------------------------------------------------------------------
 -- Ranking snapshots — one row per source × season × weight class × date
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.ranking_snapshot (
+CREATE TABLE IF NOT EXISTS core.ranking_snapshot (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     source_id       UUID NOT NULL REFERENCES core.ranking_source(id),
     season_id       UUID NOT NULL REFERENCES core.season(id),
@@ -30,12 +30,12 @@ CREATE TABLE core.ranking_snapshot (
     UNIQUE (source_id, season_id, weight_class_id, snapshot_date)
 );
 
-CREATE INDEX ON core.ranking_snapshot (season_id, snapshot_date);
+CREATE INDEX IF NOT EXISTS ranking_snapshot_season_date_idx ON core.ranking_snapshot (season_id, snapshot_date);
 
 -- ---------------------------------------------------------------------------
 -- Ranking entries — individual positions within a snapshot
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.ranking_entry (
+CREATE TABLE IF NOT EXISTS core.ranking_entry (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     snapshot_id   UUID NOT NULL REFERENCES core.ranking_snapshot(id) ON DELETE CASCADE,
     wrestler_id   UUID NOT NULL REFERENCES core.wrestler(id),
@@ -47,12 +47,12 @@ CREATE TABLE core.ranking_entry (
     UNIQUE (snapshot_id, wrestler_id)
 );
 
-CREATE INDEX ON core.ranking_entry (wrestler_id);
+CREATE INDEX IF NOT EXISTS ranking_entry_wrestler_id_idx ON core.ranking_entry (wrestler_id);
 
 -- ---------------------------------------------------------------------------
 -- Ranked pool rules — configurable criteria for building the game pool
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.ranked_pool_rule (
+CREATE TABLE IF NOT EXISTS core.ranked_pool_rule (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     season_id   UUID NOT NULL REFERENCES core.season(id),
     -- Example rule_config:
@@ -65,7 +65,7 @@ CREATE TABLE core.ranked_pool_rule (
 -- ---------------------------------------------------------------------------
 -- Ranked pool members — computed set of wrestlers eligible for a given week
 -- ---------------------------------------------------------------------------
-CREATE TABLE core.ranked_pool_member (
+CREATE TABLE IF NOT EXISTS core.ranked_pool_member (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     season_id       UUID NOT NULL REFERENCES core.season(id),
     snapshot_date   DATE NOT NULL,
@@ -77,5 +77,5 @@ CREATE TABLE core.ranked_pool_member (
     UNIQUE (season_id, snapshot_date, weight_class_id, wrestler_id)
 );
 
-CREATE INDEX ON core.ranked_pool_member (season_id, snapshot_date);
-CREATE INDEX ON core.ranked_pool_member (wrestler_id);
+CREATE INDEX IF NOT EXISTS ranked_pool_member_season_date_idx ON core.ranked_pool_member (season_id, snapshot_date);
+CREATE INDEX IF NOT EXISTS ranked_pool_member_wrestler_id_idx ON core.ranked_pool_member (wrestler_id);
