@@ -16,9 +16,9 @@ func WrestlerRoutes(app *fiber.App) {
 		return c.SendString("Backend is up!")
 	})
 
-	api := app.Group("/api")
+	api := app.Group("/api/gable")
 
-	admin := api.Group("/admin",
+	admin := app.Group("/api/admin",
 		middleware.RequireAuth,
 		middleware.RequireAdmin(),
 	)

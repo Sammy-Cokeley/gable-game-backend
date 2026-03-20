@@ -223,7 +223,7 @@ func V1GetWrestlers(c *fiber.Ctx) error {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/wrestlers/:slug
+// GET /api/v1/wrestlers/:id
 // ---------------------------------------------------------------------------
 func V1GetWrestler(c *fiber.Ctx) error {
 	id := c.Params("id")

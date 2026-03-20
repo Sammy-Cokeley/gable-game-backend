@@ -274,10 +274,21 @@ func GetUserGuesses(c *fiber.Ctx) error {
 	dateStr := time.Now().In(loc).Format("2006-01-02")
 
 	rows, err := database.DB.Query(`
-		SELECT g.id, g.wrestler_id, w.name, w.weight_class, w.year, w.team, w.conference,
-		       w.win_percentage, w.ncaa_finish, g.guess_order
+		SELECT g.id, g.wrestler_id, w.full_name, wc.label, COALESCE(ws.class_year, ''),
+		       sc.name, COALESCE(co.name, ''),
+		       COALESCE(ws.win_percentage::TEXT, ''), COALESCE(ws.ncaa_finish, ''),
+		       g.guess_order
 		FROM user_guesses g
-		JOIN wrestlers_2025 w ON g.wrestler_id = w.id
+		JOIN core.legacy_wrestler_map lm ON lm.legacy_table = 'wrestlers_2025'
+		                                AND lm.legacy_id = g.wrestler_id::TEXT
+		JOIN core.wrestler w             ON w.id  = lm.wrestler_id
+		JOIN core.wrestler_season ws     ON ws.wrestler_id = w.id
+		JOIN core.season se              ON se.id = ws.season_id AND se.year = 2025
+		JOIN core.weight_class wc        ON wc.id = ws.primary_weight_class_id
+		JOIN core.school sc              ON sc.id = ws.school_id
+		LEFT JOIN core.school_conference_season scs
+		                                 ON scs.school_id = sc.id AND scs.season_id = ws.season_id
+		LEFT JOIN core.conference co     ON co.id = scs.conference_id
 		WHERE g.user_id = $1 AND g.guess_date = $2
 		ORDER BY g.guess_order ASC
 	`, userID, dateStr)
