@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"gable-backend/database"
 	"gable-backend/mail"
 	"gable-backend/models"
@@ -74,7 +75,7 @@ func Register(c *fiber.Ctx) error {
 
 	err = mail.SendVerificationEmail(data.Email, verificationURL)
 	if err != nil {
-		fmt.Printf("Failed to send verification email: %v\n", err)
+		log.Printf("Failed to send verification email: %v", err)
 	}
 
 	return c.JSON(fiber.Map{
@@ -154,7 +155,7 @@ func ResendVerification(c *fiber.Ctx) error {
 
 	err = mail.SendVerificationEmail(data.Email, verificationURL)
 	if err != nil {
-		fmt.Printf("Failed to send verification email: %v\n", err)
+		log.Printf("Failed to send verification email: %v", err)
 	}
 
 	return c.JSON(fiber.Map{"message": "Verification email has been sent"})
@@ -255,7 +256,7 @@ func SubmitUserGuess(c *fiber.Ctx) error {
 	`, userID, input.WrestlerID, parsedDate, input.GuessOrder)
 
 	if err != nil {
-		fmt.Printf("Insert error: %v\nuserID: %v, wrestlerID: %v, date: %v, order: %v\n",
+		log.Printf("Insert error: %v | userID: %v, wrestlerID: %v, date: %v, order: %v",
 			err, userID, input.WrestlerID, parsedDate, input.GuessOrder)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to save guess",
@@ -268,7 +269,10 @@ func SubmitUserGuess(c *fiber.Ctx) error {
 }
 
 func GetUserGuesses(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int)
+	userID, ok := c.Locals("user_id").(int)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
 
 	loc, _ := time.LoadLocation("America/New_York")
 	dateStr := time.Now().In(loc).Format("2006-01-02")
@@ -279,11 +283,9 @@ func GetUserGuesses(c *fiber.Ctx) error {
 		       COALESCE(ws.win_percentage::TEXT, ''), COALESCE(ws.ncaa_finish, ''),
 		       g.guess_order
 		FROM user_guesses g
-		JOIN core.legacy_wrestler_map lm ON lm.legacy_table = 'wrestlers_2025'
-		                                AND lm.legacy_id = g.wrestler_id::TEXT
-		JOIN core.wrestler w             ON w.id  = lm.wrestler_id
+		JOIN core.wrestler w             ON w.wrestlestat_id::INT = g.wrestler_id
 		JOIN core.wrestler_season ws     ON ws.wrestler_id = w.id
-		JOIN core.season se              ON se.id = ws.season_id AND se.year = 2025
+		JOIN core.season se              ON se.id = ws.season_id AND se.year = 2026
 		JOIN core.weight_class wc        ON wc.id = ws.primary_weight_class_id
 		JOIN core.school sc              ON sc.id = ws.school_id
 		LEFT JOIN core.school_conference_season scs
@@ -294,7 +296,7 @@ func GetUserGuesses(c *fiber.Ctx) error {
 	`, userID, dateStr)
 
 	if err != nil {
-		fmt.Println("DB query error:", err)
+		log.Printf("DB query error: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Could not load guesses",
 		})
@@ -324,7 +326,10 @@ func GetUserGuesses(c *fiber.Ctx) error {
 }
 
 func UpdateUserStats(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int)
+	userID, ok := c.Locals("user_id").(int)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
 
 	type Input struct {
 		Result  string `json:"result"`
@@ -424,7 +429,10 @@ func UpdateUserStats(c *fiber.Ctx) error {
 }
 
 func GetUserStats(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int)
+	userID, ok := c.Locals("user_id").(int)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
 
 	var stats struct {
 		TotalWins       int             `json:"total_wins"`

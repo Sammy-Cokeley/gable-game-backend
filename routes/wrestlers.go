@@ -54,4 +54,7 @@ func WrestlerRoutes(app *fiber.App) {
 	admin.Post("/rankings/releases/:id/enrich", controllers.EnrichRankingsRelease)
 
 	admin.Delete("/rankings/releases/:id/staging", controllers.ClearRankingsStagingForWeight)
+
+	// Results ingestion
+	admin.Post("/results/import/trackdual", controllers.ImportTrackDualCSV)
 }

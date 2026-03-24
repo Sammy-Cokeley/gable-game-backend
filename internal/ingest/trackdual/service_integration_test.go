@@ -2,6 +2,7 @@ package trackdual
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -12,31 +13,38 @@ func (f *fakeTx) Commit() error   { return nil }
 func (f *fakeTx) Rollback() error { return nil }
 
 type fakeRepo struct {
-	nextID int64
+	nextID int
 	bouts  map[string]struct{}
 	errors int
 }
 
-func newFakeRepo() *fakeRepo                                             { return &fakeRepo{nextID: 1, bouts: map[string]struct{}{}} }
-func (f *fakeRepo) BeginTx(context.Context) (Tx, error)                  { return &fakeTx{}, nil }
-func (f *fakeRepo) CreateIngestBatch(context.Context, Tx) (int64, error) { return 1, nil }
-func (f *fakeRepo) FinalizeIngestBatch(context.Context, Tx, int64, string, ProcessResult) error {
+func newFakeRepo() *fakeRepo { return &fakeRepo{nextID: 1, bouts: map[string]struct{}{}} }
+
+func (f *fakeRepo) BeginTx(context.Context) (Tx, error)                    { return &fakeTx{}, nil }
+func (f *fakeRepo) CreateIngestBatch(context.Context, Tx) (string, error)   { return "batch-1", nil }
+func (f *fakeRepo) FinalizeIngestBatch(context.Context, Tx, string, string, ProcessResult) error {
 	return nil
 }
-func (f *fakeRepo) GetOrCreateSeason(context.Context, Tx, int) (int64, error)        { return 11, nil }
-func (f *fakeRepo) GetWeightClassByLabel(context.Context, Tx, string) (int64, error) { return 22, nil }
-func (f *fakeRepo) GetOrCreateSchool(context.Context, Tx, string) (int64, error)     { return 33, nil }
-func (f *fakeRepo) GetOrCreateEvent(context.Context, Tx, int64, string, string, string, string) (int64, error) {
-	return 44, nil
+func (f *fakeRepo) GetOrCreateSeason(context.Context, Tx, int) (string, error) {
+	return "season-uuid", nil
 }
-func (f *fakeRepo) GetOrCreateWrestlerWithAlias(context.Context, Tx, string) (int64, error) {
+func (f *fakeRepo) GetWeightClassByLabel(context.Context, Tx, string) (string, error) {
+	return "wc-uuid", nil
+}
+func (f *fakeRepo) GetOrCreateSchool(context.Context, Tx, string) (string, error) {
+	return "school-uuid", nil
+}
+func (f *fakeRepo) GetOrCreateEvent(context.Context, Tx, string, string, string, string, string) (string, error) {
+	return "event-uuid", nil
+}
+func (f *fakeRepo) GetOrCreateWrestlerWithAlias(context.Context, Tx, string) (string, error) {
 	f.nextID++
-	return f.nextID, nil
+	return fmt.Sprintf("wrestler-%d", f.nextID), nil
 }
-func (f *fakeRepo) UpsertWrestlerSeason(context.Context, Tx, int64, int64, int64, int64) error {
+func (f *fakeRepo) UpsertWrestlerSeason(context.Context, Tx, string, string, string, string) error {
 	return nil
 }
-func (f *fakeRepo) InsertIngestError(context.Context, Tx, int64, int, string, CSVRecord) error {
+func (f *fakeRepo) InsertIngestError(context.Context, Tx, string, int, string, CSVRecord) error {
 	f.errors++
 	return nil
 }

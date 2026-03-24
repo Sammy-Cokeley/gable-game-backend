@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"log"
+	"strconv"
 	"time"
 
 	"gable-backend/database"
@@ -10,23 +11,22 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// coreWrestlerQuery is the base SELECT that reads wrestler attributes from core.*,
-// bridging through core.legacy_wrestler_map so the returned id is still the
-// legacy wrestlers_2025 INT id that the game's guess submission expects.
+// coreWrestlerQuery is the base SELECT that reads 2026 wrestler attributes from core.*.
+// The returned id is the core.wrestler.wrestlestat_id cast to INT for use by the
+// game's guess submission endpoint.
 const coreWrestlerQuery = `
-	SELECT lm.legacy_id::INT, wc.label, w.full_name, COALESCE(ws.class_year, ''),
+	SELECT w.wrestlestat_id::INT, wc.label, w.full_name, COALESCE(ws.class_year, ''),
 	       sc.name, COALESCE(co.name, ''),
 	       COALESCE(ws.win_percentage::TEXT, ''), COALESCE(ws.ncaa_finish, '')
-	FROM core.legacy_wrestler_map lm
-	JOIN core.wrestler w          ON w.id  = lm.wrestler_id
-	JOIN core.wrestler_season ws  ON ws.wrestler_id = w.id
-	JOIN core.season se           ON se.id = ws.season_id AND se.year = 2025
-	JOIN core.weight_class wc     ON wc.id = ws.primary_weight_class_id
-	JOIN core.school sc           ON sc.id = ws.school_id
+	FROM core.wrestler_season ws
+	JOIN core.wrestler w      ON w.id  = ws.wrestler_id
+	JOIN core.season se       ON se.id = ws.season_id AND se.year = 2026
+	JOIN core.weight_class wc ON wc.id = ws.primary_weight_class_id
+	JOIN core.school sc       ON sc.id = ws.school_id
 	LEFT JOIN core.school_conference_season scs
-	                              ON scs.school_id = sc.id AND scs.season_id = ws.season_id
-	LEFT JOIN core.conference co  ON co.id = scs.conference_id
-	WHERE lm.legacy_table = 'wrestlers_2025'
+	                          ON scs.school_id = sc.id AND scs.season_id = ws.season_id
+	LEFT JOIN core.conference co ON co.id = scs.conference_id
+	WHERE w.wrestlestat_id IS NOT NULL
 `
 
 func scanWrestler(row interface{ Scan(...any) error }) (models.Wrestler, error) {
@@ -82,7 +82,7 @@ func GetDailyWrestler(c *fiber.Ctx) error {
 	}
 
 	w, err := scanWrestler(database.DB.QueryRow(
-		coreWrestlerQuery+" AND lm.legacy_id = $1::TEXT", legacyID,
+		coreWrestlerQuery+" AND w.wrestlestat_id = $1", strconv.Itoa(legacyID),
 	))
 	if err != nil {
 		log.Println("Error fetching daily wrestler from core:", err)

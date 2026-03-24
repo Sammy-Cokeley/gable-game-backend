@@ -15,38 +15,16 @@ type Tx interface {
 
 type Repository interface {
 	BeginTx(ctx context.Context) (Tx, error)
-	CreateIngestBatch(ctx context.Context, tx Tx) (int64, error)
-	FinalizeIngestBatch(ctx context.Context, tx Tx, batchID int64, status string, summary ProcessResult) error
-	GetOrCreateSeason(ctx context.Context, tx Tx, year int) (int64, error)
-	GetWeightClassByLabel(ctx context.Context, tx Tx, label string) (int64, error)
-	GetOrCreateSchool(ctx context.Context, tx Tx, slug string) (int64, error)
-	GetOrCreateEvent(ctx context.Context, tx Tx, seasonID int64, name string, eventDate string, eventType string, dualID string) (int64, error)
-	GetOrCreateWrestlerWithAlias(ctx context.Context, tx Tx, fullName string) (int64, error)
-	UpsertWrestlerSeason(ctx context.Context, tx Tx, wrestlerID int64, seasonID int64, schoolID int64, weightClassID int64) error
-	InsertIngestError(ctx context.Context, tx Tx, batchID int64, rowNumber int, reason string, payload CSVRecord) error
+	CreateIngestBatch(ctx context.Context, tx Tx) (string, error)
+	FinalizeIngestBatch(ctx context.Context, tx Tx, batchID string, status string, summary ProcessResult) error
+	GetOrCreateSeason(ctx context.Context, tx Tx, year int) (string, error)
+	GetWeightClassByLabel(ctx context.Context, tx Tx, label string) (string, error)
+	GetOrCreateSchool(ctx context.Context, tx Tx, slug string) (string, error)
+	GetOrCreateEvent(ctx context.Context, tx Tx, seasonID string, name string, eventDate string, eventType string, dualID string) (string, error)
+	GetOrCreateWrestlerWithAlias(ctx context.Context, tx Tx, fullName string) (string, error)
+	UpsertWrestlerSeason(ctx context.Context, tx Tx, wrestlerID string, seasonID string, schoolID string, weightClassID string) error
+	InsertIngestError(ctx context.Context, tx Tx, batchID string, rowNumber int, reason string, payload CSVRecord) error
 	InsertBout(ctx context.Context, tx Tx, input BoutInsertInput) (bool, error)
-}
-
-type BoutInsertInput struct { /* unchanged */
-	EventID       int64
-	SeasonID      int64
-	WeightClassID int64
-	WrestlerAID   int64
-	WrestlerBID   int64
-	WinnerID      int64
-	ResultMethod  string
-	ScoreA        *int
-	ScoreB        *int
-	MatchTime     string
-	SourceMatchID string
-	IdentityHash  string
-	DualID        string
-	BoutNumber    int
-	WrestlerAName string
-	WrestlerBName string
-	WinnerName    string
-	WeightLabel   string
-	EventDateISO  string
 }
 
 type Service struct{ repo Repository }
@@ -74,7 +52,7 @@ func (s *Service) Process(ctx context.Context, rows []CSVRecord) (ProcessResult,
 			_ = s.repo.InsertIngestError(ctx, tx, batchID, rowNum, "winner_name must match wrestler_a_name or wrestler_b_name", row)
 			continue
 		}
-		if err := s.processRow(ctx, tx, row, &result); err != nil {
+		if err := s.processRow(ctx, tx, batchID, row, &result); err != nil {
 			result.RowsFailed++
 			_ = s.repo.InsertIngestError(ctx, tx, batchID, rowNum, err.Error(), row)
 			continue
@@ -90,7 +68,7 @@ func (s *Service) Process(ctx context.Context, rows []CSVRecord) (ProcessResult,
 	return result, nil
 }
 
-func (s *Service) processRow(ctx context.Context, tx Tx, row CSVRecord, result *ProcessResult) error {
+func (s *Service) processRow(ctx context.Context, tx Tx, batchID string, row CSVRecord, result *ProcessResult) error {
 	seasonID, err := s.repo.GetOrCreateSeason(ctx, tx, row.SeasonYear)
 	if err != nil {
 		return fmt.Errorf("season: %w", err)
@@ -126,7 +104,28 @@ func (s *Service) processRow(ctx context.Context, tx Tx, row CSVRecord, result *
 		winnerID = wrestlerBID
 	}
 	scoreA, scoreB := assignScores(row)
-	inserted, err := s.repo.InsertBout(ctx, tx, BoutInsertInput{EventID: eventID, SeasonID: seasonID, WeightClassID: weightClassID, WrestlerAID: wrestlerAID, WrestlerBID: wrestlerBID, WinnerID: winnerID, ResultMethod: row.ResultMethod, ScoreA: scoreA, ScoreB: scoreB, MatchTime: row.MatchTime, SourceMatchID: row.SourceMatchID, IdentityHash: ComputeIdentityHash(row), DualID: row.DualID, BoutNumber: row.BoutNumber, WrestlerAName: row.WrestlerAName, WrestlerBName: row.WrestlerBName, WinnerName: row.WinnerName, WeightLabel: row.WeightLabel, EventDateISO: row.EventDate.Format("2006-01-02")})
+	inserted, err := s.repo.InsertBout(ctx, tx, BoutInsertInput{
+		BatchID:       batchID,
+		EventID:       eventID,
+		SeasonID:      seasonID,
+		WeightClassID: weightClassID,
+		WrestlerAID:   wrestlerAID,
+		WrestlerBID:   wrestlerBID,
+		WinnerID:      winnerID,
+		ResultMethod:  row.ResultMethod,
+		ScoreA:        scoreA,
+		ScoreB:        scoreB,
+		MatchTime:     row.MatchTime,
+		SourceMatchID: row.SourceMatchID,
+		IdentityHash:  ComputeIdentityHash(row),
+		DualID:        row.DualID,
+		BoutNumber:    row.BoutNumber,
+		WrestlerAName: row.WrestlerAName,
+		WrestlerBName: row.WrestlerBName,
+		WinnerName:    row.WinnerName,
+		WeightLabel:   row.WeightLabel,
+		EventDateISO:  row.EventDate.Format("2006-01-02"),
+	})
 	if err != nil {
 		return fmt.Errorf("insert bout: %w", err)
 	}
@@ -139,22 +138,36 @@ func (s *Service) processRow(ctx context.Context, tx Tx, row CSVRecord, result *
 }
 
 func ComputeIdentityHash(row CSVRecord) string {
-	base := strings.Join([]string{strings.TrimSpace(row.DualID), row.EventDate.Format("2006-01-02"), strings.ToLower(strings.TrimSpace(row.WeightLabel)), fmt.Sprintf("%d", row.BoutNumber), strings.ToLower(strings.TrimSpace(row.WrestlerAName)), strings.ToLower(strings.TrimSpace(row.WrestlerBName)), strings.ToLower(strings.TrimSpace(row.ResultMethod)), normalizeScore(row.ScoreWinner), normalizeScore(row.ScoreLoser)}, "|")
+	base := strings.Join([]string{
+		strings.TrimSpace(row.DualID),
+		row.EventDate.Format("2006-01-02"),
+		strings.ToLower(strings.TrimSpace(row.WeightLabel)),
+		fmt.Sprintf("%d", row.BoutNumber),
+		strings.ToLower(strings.TrimSpace(row.WrestlerAName)),
+		strings.ToLower(strings.TrimSpace(row.WrestlerBName)),
+		strings.ToLower(strings.TrimSpace(row.ResultMethod)),
+		normalizeScore(row.ScoreWinner),
+		normalizeScore(row.ScoreLoser),
+	}, "|")
 	sum := sha256.Sum256([]byte(base))
 	return hex.EncodeToString(sum[:])
 }
+
 func normalizeScore(v *int) string {
 	if v == nil {
 		return ""
 	}
 	return fmt.Sprintf("%d", *v)
 }
+
 func winnerMatches(row CSVRecord) bool {
 	return nameEqual(row.WinnerName, row.WrestlerAName) || nameEqual(row.WinnerName, row.WrestlerBName)
 }
+
 func nameEqual(a, b string) bool {
 	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
+
 func assignScores(row CSVRecord) (*int, *int) {
 	if nameEqual(row.WinnerName, row.WrestlerAName) {
 		return row.ScoreWinner, row.ScoreLoser

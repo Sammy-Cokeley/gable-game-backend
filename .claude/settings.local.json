@@ -5,7 +5,11 @@
       "Bash(docker --version)",
       "Bash(docker exec:*)",
       "Bash(docker run:*)",
-      "Bash(__NEW_LINE_98c66f7f7968fbdc__ docker:*)"
+      "Bash(__NEW_LINE_98c66f7f7968fbdc__ docker:*)",
+      "WebSearch",
+      "Bash(grep -n \"CREATE TABLE.*core\\\\.event\\\\|CREATE TABLE.*core\\\\.bout\" \"/c/Users/Sammy/personal projects/gable-backend/database/migrations/\"*.sql)",
+      "Bash(find 'c:\\\\Users\\\\Sammy\\\\personal projects\\\\gable-backend\\\\cmd\\\\fetch_tournament' -type f -name *.go)",
+      "Bash(find 'c:\\\\Users\\\\Sammy\\\\personal projects\\\\gable-backend\\\\cmd\\\\ingest_season_tournaments' -type f -name *.go)"
     ]
   },
   "hooks": {
@@ -17,8 +21,7 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"pre:bash:git-push-reminder\" \"scripts/hooks/pre-bash-git-push-reminder.js\" \"strict\""
           }
-        ],
-        "description": "Reminder before git push to review changes"
+        ]
       },
       {
         "matcher": "Edit|Write",
@@ -27,8 +30,7 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"pre:edit-write:suggest-compact\" \"scripts/hooks/suggest-compact.js\" \"standard,strict\""
           }
-        ],
-        "description": "Suggest manual compaction at logical intervals"
+        ]
       }
     ],
     "PostToolUse": [
@@ -39,8 +41,7 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:bash:pr-created\" \"scripts/hooks/post-bash-pr-created.js\" \"standard,strict\""
           }
-        ],
-        "description": "Log PR URL and provide review command after PR creation"
+        ]
       },
       {
         "matcher": "Edit|Write|MultiEdit",
@@ -48,11 +49,10 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"post:quality-gate\" \"scripts/hooks/quality-gate.js\" \"standard,strict\"",
-            "async": true,
-            "timeout": 30
+            "timeout": 30,
+            "async": true
           }
-        ],
-        "description": "Run quality gate checks after file edits"
+        ]
       }
     ],
     "PreCompact": [
@@ -63,8 +63,7 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"pre:compact\" \"scripts/hooks/pre-compact.js\" \"standard,strict\""
           }
-        ],
-        "description": "Save state before context compaction"
+        ]
       }
     ],
     "Stop": [
@@ -74,11 +73,10 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"stop:session-end\" \"scripts/hooks/session-end.js\" \"minimal,standard,strict\"",
-            "async": true,
-            "timeout": 10
+            "timeout": 10,
+            "async": true
           }
-        ],
-        "description": "Persist session state after each response"
+        ]
       },
       {
         "matcher": "*",
@@ -86,11 +84,10 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-with-flags.js\" \"stop:cost-tracker\" \"scripts/hooks/cost-tracker.js\" \"minimal,standard,strict\"",
-            "async": true,
-            "timeout": 10
+            "timeout": 10,
+            "async": true
           }
-        ],
-        "description": "Track token and cost metrics per session"
+        ]
       }
     ]
   }
