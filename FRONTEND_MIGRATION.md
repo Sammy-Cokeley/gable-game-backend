@@ -8,21 +8,21 @@ Tracks all backend changes that require corresponding updates in the Gable Game 
 
 All game API calls must be updated from `/api/` to `/api/gable/`.
 
-| Old Route | New Route |
-|---|---|
-| `GET /api/wrestlers` | `GET /api/gable/wrestlers` |
-| `GET /api/wrestlers?name=...` | `GET /api/gable/wrestlers?name=...` |
-| `GET /api/daily` | `GET /api/gable/daily` |
-| `GET /api/me` | `GET /api/gable/me` |
-| `GET /api/user/guesses` | `GET /api/gable/user/guesses` |
-| `GET /api/user/stats` | `GET /api/gable/user/stats` |
-| `POST /api/register` | `POST /api/gable/register` |
-| `POST /api/login` | `POST /api/gable/login` |
-| `POST /api/verify-email` | `POST /api/gable/verify-email` |
-| `POST /api/resend-verification` | `POST /api/gable/resend-verification` |
-| `POST /api/user/guess` | `POST /api/gable/user/guess` |
-| `POST /api/user/stats` | `POST /api/gable/user/stats` |
-| `POST /api/contact` | `POST /api/gable/contact` |
+| Old Route                       | New Route                              |
+|---------------------------------|----------------------------------------|
+| `GET /api/wrestlers`            | `GET /api/gable/wrestlers`             |
+| `GET /api/wrestlers?name=...`   | `GET /api/gable/wrestlers?name=...`    |
+| `GET /api/daily`                | `GET /api/gable/daily`                 |
+| `GET /api/me`                   | `GET /api/gable/me`                    |
+| `GET /api/user/guesses`         | `GET /api/gable/user/guesses`          |
+| `GET /api/user/stats`           | `GET /api/gable/user/stats`            |
+| `POST /api/register`            | `POST /api/gable/register`             |
+| `POST /api/login`               | `POST /api/gable/login`                |
+| `POST /api/verify-email`        | `POST /api/gable/verify-email`         |
+| `POST /api/resend-verification` | `POST /api/gable/resend-verification`  |
+| `POST /api/user/guess`          | `POST /api/gable/user/guess`           |
+| `POST /api/user/stats`          | `POST /api/gable/user/stats`           |
+| `POST /api/contact`             | `POST /api/gable/contact`              |
 
 ---
 
