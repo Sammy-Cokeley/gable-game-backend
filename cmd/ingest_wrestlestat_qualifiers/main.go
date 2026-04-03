@@ -34,52 +34,66 @@ func main() {
 	database.ConnectDB()
 	client := &http.Client{Timeout: 15 * time.Second}
 
-	weights := weightClasses
-	if *weight > 0 {
-		weights = []int{*weight}
+	total, failed, skipped := 0, 0, 0
+	ctx := context.Background()
+
+	// Collect entries: historical years use a single all-weights page;
+	// current season (default 2026) uses one request per weight class.
+	var allEntries []wrestlestat.WrestlerEntry
+
+	if *season > 0 && *season < 2026 {
+		log.Printf("=== Fetching year-indexed starters for season %d ===", *season)
+		entries, err := wrestlestat.ScrapeAllStartersByYear(client, *season, *weight)
+		if err != nil {
+			log.Fatalf("ERROR scraping season %d: %v", *season, err)
+		}
+		log.Printf("Scraped %d wrestlers across all weight classes", len(entries))
+		allEntries = entries
+	} else {
+		weights := weightClasses
+		if *weight > 0 {
+			weights = []int{*weight}
+		}
+		for _, w := range weights {
+			log.Printf("=== Weight class %d ===", w)
+			entries, err := wrestlestat.ScrapeStartersByWeight(client, w)
+			if err != nil {
+				log.Printf("  ERROR scraping %d: %v", w, err)
+				continue
+			}
+			log.Printf("  Scraped %d wrestlers", len(entries))
+			time.Sleep(*delay)
+			allEntries = append(allEntries, entries...)
+		}
 	}
 
-	total, failed, skipped := 0, 0, 0
+	if *limit > 0 && len(allEntries) > *limit {
+		allEntries = allEntries[:*limit]
+	}
 
-	ctx := context.Background()
-	for _, w := range weights {
-		log.Printf("=== Weight class %d ===", w)
-		entries, err := wrestlestat.ScrapeStartersByWeight(client, w, *season)
-		if err != nil {
-			log.Printf("  ERROR scraping %d: %v", w, err)
-			continue
-		}
-		log.Printf("  Scraped %d wrestlers", len(entries))
-		time.Sleep(*delay)
+	for i := range allEntries {
+		e := &allEntries[i]
 
-		if *limit > 0 && len(entries) > *limit {
-			entries = entries[:*limit]
-		}
-
-		for i := range entries {
-			e := &entries[i]
-
-			if !*skipFinish {
-				if err := wrestlestat.FetchNCAAFinish(client, e, *season); err != nil {
-					log.Printf("  WARN: profile fetch failed for %s (wsid=%d): %v", e.Name, e.WrestleStatID, err)
-				}
-				time.Sleep(*delay)
-
-				// Only import wrestlers who competed at NCAAs
-				if e.NCAAFinish == "" {
-					skipped++
-					continue
-				}
+		if !*skipFinish {
+			if err := wrestlestat.FetchNCAAFinish(client, e, *season); err != nil {
+				log.Printf("  WARN: profile fetch failed for %s (wsid=%d): %v", e.Name, e.WrestleStatID, err)
 			}
+			time.Sleep(*delay)
 
-			if err := upsertQualifier(ctx, database.DB, *season, e); err != nil {
-				log.Printf("  ERROR upserting %s: %v", e.Name, err)
-				failed++
-			} else {
-				log.Printf("  OK: %s (%s, %s, %s, %s, %s W%d-L%d)",
-					e.Name, e.WeightClass, e.ClassYear, e.School, e.Conference, e.NCAAFinish, e.Wins, e.Losses)
-				total++
+			// Only import wrestlers who competed at NCAAs
+			if e.NCAAFinish == "" {
+				skipped++
+				continue
 			}
+		}
+
+		if err := upsertQualifier(ctx, database.DB, *season, e); err != nil {
+			log.Printf("  ERROR upserting %s: %v", e.Name, err)
+			failed++
+		} else {
+			log.Printf("  OK: %s (%s, %s, %s, %s, %s W%d-L%d)",
+				e.Name, e.WeightClass, e.ClassYear, e.School, e.Conference, e.NCAAFinish, e.Wins, e.Losses)
+			total++
 		}
 	}
 

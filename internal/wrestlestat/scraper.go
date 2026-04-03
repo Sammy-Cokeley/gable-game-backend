@@ -28,24 +28,18 @@ type WrestlerEntry struct {
 }
 
 var (
-	reWrestlerID  = regexp.MustCompile(`/wrestler/(\d+)/`)
-	reLeadingRank = regexp.MustCompile(`^#\d+\s+`)
-	reRecord      = regexp.MustCompile(`(\d+)\s*-\s*(\d+)`)
+	reWrestlerID   = regexp.MustCompile(`/wrestler/(\d+)/`)
+	reLeadingRank  = regexp.MustCompile(`^#\d+\s+`)
+	reRecord       = regexp.MustCompile(`(\d+)\s*-\s*(\d+)`)
+	reWeightDigits = regexp.MustCompile(`\b(125|133|141|149|157|165|174|184|197|285)\b`)
 )
 
-// ScrapeStartersByWeight scrapes the WrestleStat starters/rankings page for a given
-// weight class and returns all wrestler entries found. Each entry is populated with
-// name, school, conference, record, class year, and WrestleStat ID.
+// ScrapeStartersByWeight scrapes the WrestleStat current-season starters page
+// for a single weight class. Each entry is populated with name, school,
+// conference, record, class year, and WrestleStat ID.
 // NCAAFinish is left empty — call FetchNCAAFinish to populate it.
-// Pass seasonYear=0 to use the current-season URL; pass a specific year (e.g. 2024)
-// to use the year-indexed archive URL.
-func ScrapeStartersByWeight(client *http.Client, weightClass int, seasonYear int) ([]WrestlerEntry, error) {
-	var url string
-	if seasonYear == 0 {
-		url = fmt.Sprintf("https://www.wrestlestat.com/d1/rankings/starters/weight/%d", weightClass)
-	} else {
-		url = fmt.Sprintf("https://www.wrestlestat.com/d1/season/%d/rankings/starters/weight/%d", seasonYear, weightClass)
-	}
+func ScrapeStartersByWeight(client *http.Client, weightClass int) ([]WrestlerEntry, error) {
+	url := fmt.Sprintf("https://www.wrestlestat.com/d1/rankings/starters/weight/%d", weightClass)
 	doc, err := fetchDoc(client, url)
 	if err != nil {
 		return nil, err
@@ -53,79 +47,48 @@ func ScrapeStartersByWeight(client *http.Client, weightClass int, seasonYear int
 
 	weight := strconv.Itoa(weightClass)
 	seen := map[int]bool{}
-	entries := make([]WrestlerEntry, 0, 80)
-
-	doc.Find("tr").Each(func(_ int, row *goquery.Selection) {
-		tds := row.Find("td")
-		if tds.Length() < 4 {
-			return
-		}
-
-		// Cell index 2: wrestler link and school link
-		cell2 := tds.Eq(2)
-		wLink := cell2.Find(`a[href*="/wrestler/"]`).First()
-		if wLink.Length() == 0 {
-			return
-		}
-
-		href, _ := wLink.Attr("href")
-		m := reWrestlerID.FindStringSubmatch(href)
-		if len(m) != 2 {
-			return
-		}
-		wsid, err := strconv.Atoi(m[1])
-		if err != nil || wsid <= 0 || seen[wsid] {
-			return
-		}
-		seen[wsid] = true
-
-		// Name: "Robinson, Vincent" → "Vincent Robinson"
-		rawName := strings.TrimSpace(wLink.Text())
-		name := displayNameToFirstLast(rawName)
-		if name == "" {
-			return
-		}
-
-		// Class year: cell text has "... | SO ..." after the wrestler link
-		cell2Text := cell2.Text()
-		classYear := extractClassYear(cell2Text)
-
-		// School: a[href*="/team/"] in same cell
-		sLink := cell2.Find(`a[href*="/team/"]`).First()
-		school := ""
-		if sLink.Length() > 0 {
-			rawSchool := strings.TrimSpace(sLink.Text())
-			rawSchool = reLeadingRank.ReplaceAllString(rawSchool, "")
-			school = strings.TrimSpace(rawSchool)
-		}
-
-		// Cell index 3: "Big Ten\n25 - 0" (or with <br>)
-		cell3 := tds.Eq(3)
-		conference, wins, losses := parseConferenceAndRecord(cell3)
-
-		profileURL := "https://www.wrestlestat.com" + strings.TrimSuffix(href, "/")
-		if !strings.HasSuffix(href, "/profile") {
-			profileURL = "https://www.wrestlestat.com/wrestler/" + strconv.Itoa(wsid) + "/" + nameToSlug(name) + "/profile"
-		}
-
-		entries = append(entries, WrestlerEntry{
-			WrestleStatID: wsid,
-			ProfileURL:    profileURL,
-			Name:          name,
-			School:        school,
-			SchoolSlug:    Slugify(school),
-			Conference:    conference,
-			WeightClass:   weight,
-			ClassYear:     classYear,
-			Wins:          wins,
-			Losses:        losses,
-		})
-	})
-
+	entries := parseWrestlerRows(doc.Selection, weight, seen)
 	if len(entries) == 0 {
 		return nil, errors.New("no wrestlers found on starters page")
 	}
 	return entries, nil
+}
+
+// ScrapeAllStartersByYear scrapes the WrestleStat year-indexed starters page,
+// which lists all weight classes in tab sections on a single page.
+// Pass weightFilter=0 to return all weight classes, or a specific weight (e.g. 125)
+// to return only that class.
+func ScrapeAllStartersByYear(client *http.Client, seasonYear int, weightFilter int) ([]WrestlerEntry, error) {
+	url := fmt.Sprintf("https://www.wrestlestat.com/d1/season/%d/rankings/starters", seasonYear)
+	doc, err := fetchDoc(client, url)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := map[int]bool{}
+	var all []WrestlerEntry
+
+	// Each weight class is in a Bootstrap tab pane. Find each pane, extract its
+	// weight label from the pane heading or ID, then parse the wrestler rows.
+	//
+	// Note: if the page uses a different container class (e.g. "weight-section"),
+	// update this selector on first run by inspecting the page source.
+	doc.Find(".tab-pane").Each(func(_ int, pane *goquery.Selection) {
+		weight := extractWeightLabel(pane)
+		if weight == "" {
+			return
+		}
+		if weightFilter > 0 && weight != strconv.Itoa(weightFilter) {
+			return
+		}
+		entries := parseWrestlerRows(pane, weight, seen)
+		all = append(all, entries...)
+	})
+
+	if len(all) == 0 {
+		return nil, errors.New("no wrestlers found on year-indexed starters page")
+	}
+	return all, nil
 }
 
 // FetchNCAAFinish fetches the wrestler's WrestleStat profile page and sets
@@ -175,6 +138,98 @@ func Slugify(s string) string {
 }
 
 // ---- internal helpers -------------------------------------------------------
+
+// parseWrestlerRows parses wrestler table rows from a goquery selection (either
+// the full document or a single tab-pane). Each entry is tagged with the given
+// weight label. seen deduplicates by WrestleStat ID across calls.
+func parseWrestlerRows(sel *goquery.Selection, weight string, seen map[int]bool) []WrestlerEntry {
+	var entries []WrestlerEntry
+	sel.Find("tr").Each(func(_ int, row *goquery.Selection) {
+		tds := row.Find("td")
+		if tds.Length() < 4 {
+			return
+		}
+
+		cell2 := tds.Eq(2)
+		wLink := cell2.Find(`a[href*="/wrestler/"]`).First()
+		if wLink.Length() == 0 {
+			return
+		}
+
+		href, _ := wLink.Attr("href")
+		m := reWrestlerID.FindStringSubmatch(href)
+		if len(m) != 2 {
+			return
+		}
+		wsid, err := strconv.Atoi(m[1])
+		if err != nil || wsid <= 0 || seen[wsid] {
+			return
+		}
+		seen[wsid] = true
+
+		rawName := strings.TrimSpace(wLink.Text())
+		name := displayNameToFirstLast(rawName)
+		if name == "" {
+			return
+		}
+
+		classYear := extractClassYear(cell2.Text())
+
+		sLink := cell2.Find(`a[href*="/team/"]`).First()
+		school := ""
+		if sLink.Length() > 0 {
+			rawSchool := strings.TrimSpace(sLink.Text())
+			rawSchool = reLeadingRank.ReplaceAllString(rawSchool, "")
+			school = strings.TrimSpace(rawSchool)
+		}
+
+		conference, wins, losses := parseConferenceAndRecord(tds.Eq(3))
+
+		profileURL := "https://www.wrestlestat.com" + strings.TrimSuffix(href, "/")
+		if !strings.HasSuffix(href, "/profile") {
+			profileURL = "https://www.wrestlestat.com/wrestler/" + strconv.Itoa(wsid) + "/" + nameToSlug(name) + "/profile"
+		}
+
+		entries = append(entries, WrestlerEntry{
+			WrestleStatID: wsid,
+			ProfileURL:    profileURL,
+			Name:          name,
+			School:        school,
+			SchoolSlug:    Slugify(school),
+			Conference:    conference,
+			WeightClass:   weight,
+			ClassYear:     classYear,
+			Wins:          wins,
+			Losses:        losses,
+		})
+	})
+	return entries
+}
+
+// extractWeightLabel extracts the weight class string (e.g. "125", "285") from
+// a tab-pane selection by checking its heading text then its ID attribute.
+func extractWeightLabel(pane *goquery.Selection) string {
+	heading := strings.TrimSpace(pane.Find("h2,h3,h4").First().Text())
+	if w := normalizeWeightLabel(heading); w != "" {
+		return w
+	}
+	id, _ := pane.Attr("id")
+	return normalizeWeightLabel(id)
+}
+
+// normalizeWeightLabel extracts a valid weight class label from a raw string.
+// Maps "HWT" / "Heavyweight" → "285"; returns "" if unrecognised.
+func normalizeWeightLabel(s string) string {
+	s = strings.TrimSpace(s)
+	if m := reWeightDigits.FindString(s); m != "" {
+		return m
+	}
+	upper := strings.ToUpper(s)
+	if strings.Contains(upper, "HWT") || strings.Contains(upper, "HEAVYWEIGHT") {
+		return "285"
+	}
+	return ""
+}
 
 func fetchDoc(client *http.Client, url string) (*goquery.Document, error) {
 	req, err := http.NewRequest("GET", url, nil)
