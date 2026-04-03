@@ -10,6 +10,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// Note: seasonYearForDate relies on the daily_wrestlers.season_year column
+// added in migration 009. Each seeding migration must populate this column.
+
 // dynamicCoreWrestlerQuery is the base SELECT for wrestler attributes, parameterized
 // on season year as $1. Additional predicates must use $2, $3, etc.
 const dynamicCoreWrestlerQuery = `
@@ -44,21 +47,15 @@ func resolveGameDate(c *fiber.Ctx, today string) (string, error) {
 	return dateParam, nil
 }
 
-// seasonYearForDate returns the core.season.year for the season whose wrestlers
-// are scheduled on the given date in daily_wrestlers.
-// Returns an error if no puzzle exists for that date.
+// seasonYearForDate returns the season year for the puzzle on the given date.
+// It reads directly from daily_wrestlers.season_year (set by seeding migrations)
+// which avoids ambiguity for wrestlers who competed in multiple seasons.
 func seasonYearForDate(ctx context.Context, dateStr string) (int, error) {
 	var year int
-	err := database.DB.QueryRowContext(ctx, `
-		SELECT se.year
-		FROM daily_wrestlers dw
-		JOIN core.wrestler w         ON w.wrestlestat_id::INT = dw.wrestler_id
-		JOIN core.wrestler_season ws ON ws.wrestler_id = w.id
-		JOIN core.season se          ON se.id = ws.season_id
-		WHERE dw.day = $1::date
-		ORDER BY se.year ASC
-		LIMIT 1
-	`, dateStr).Scan(&year)
+	err := database.DB.QueryRowContext(ctx,
+		"SELECT season_year FROM daily_wrestlers WHERE day = $1::date",
+		dateStr,
+	).Scan(&year)
 	if err != nil {
 		return 0, fmt.Errorf("seasonYearForDate %s: %w", dateStr, err)
 	}

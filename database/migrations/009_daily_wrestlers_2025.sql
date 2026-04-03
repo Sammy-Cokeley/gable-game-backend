@@ -13,6 +13,10 @@
 --   WHERE w.wrestlestat_id IS NOT NULL;
 -- If count is significantly below ~330, run the WrestleStat ingest for year 2025 first.
 
+-- Add season_year so each puzzle date explicitly records which season it belongs to.
+-- This avoids ambiguous season lookups for wrestlers who competed in multiple seasons.
+ALTER TABLE daily_wrestlers ADD COLUMN IF NOT EXISTS season_year INT;
+
 DO $$
 DECLARE
     r          RECORD;
@@ -29,8 +33,8 @@ BEGIN
         WHERE w.wrestlestat_id IS NOT NULL
         ORDER BY random()
     LOOP
-        INSERT INTO daily_wrestlers (day, wrestler_id)
-        VALUES ('2025-03-23'::date + day_offset, r.wsid)
+        INSERT INTO daily_wrestlers (day, wrestler_id, season_year)
+        VALUES ('2025-03-23'::date + day_offset, r.wsid, 2025)
         ON CONFLICT DO NOTHING;
 
         day_offset := day_offset + 1;
