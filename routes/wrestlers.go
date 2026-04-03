@@ -29,6 +29,7 @@ func WrestlerRoutes(app *fiber.App) {
 	api.Get("/me", middleware.RequireAuth, controllers.GetMe)
 	api.Get("/user/guesses", middleware.RequireAuth, controllers.GetUserGuesses)
 	api.Get("/user/stats", middleware.RequireAuth, controllers.GetUserStats)
+	api.Get("/archive/seasons", controllers.GetArchiveSeasons)
 
 	//POST Requests
 	api.Post("/register", controllers.Register)

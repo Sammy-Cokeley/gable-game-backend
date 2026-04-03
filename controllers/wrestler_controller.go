@@ -72,20 +72,32 @@ func GetDailyWrestler(c *fiber.Ctx) error {
 	loc, _ := time.LoadLocation("America/New_York")
 	today := time.Now().In(loc).Format("2006-01-02")
 
-	var legacyID int
-	err := database.DB.QueryRow(
-		"SELECT wrestler_id FROM daily_wrestlers WHERE day = $1::date", today,
-	).Scan(&legacyID)
+	dateStr, err := resolveGameDate(c, today)
 	if err != nil {
-		log.Println("Error querying daily_wrestlers:", err)
-		return c.Status(404).SendString("Wrestler not found for today")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	w, err := scanWrestler(database.DB.QueryRow(
-		coreWrestlerQuery+" AND w.wrestlestat_id = $1", strconv.Itoa(legacyID),
+	seasonYear, err := seasonYearForDate(c.Context(), dateStr)
+	if err != nil {
+		log.Printf("GetDailyWrestler: no puzzle for date %s: %v", dateStr, err)
+		return c.Status(404).SendString("Wrestler not found for date")
+	}
+
+	var legacyID int
+	err = database.DB.QueryRowContext(c.Context(),
+		"SELECT wrestler_id FROM daily_wrestlers WHERE day = $1::date", dateStr,
+	).Scan(&legacyID)
+	if err != nil {
+		log.Printf("GetDailyWrestler daily_wrestlers: %v", err)
+		return c.Status(404).SendString("Wrestler not found for date")
+	}
+
+	w, err := scanWrestler(database.DB.QueryRowContext(c.Context(),
+		dynamicCoreWrestlerQuery+" AND w.wrestlestat_id = $2",
+		seasonYear, strconv.Itoa(legacyID),
 	))
 	if err != nil {
-		log.Println("Error fetching daily wrestler from core:", err)
+		log.Printf("GetDailyWrestler core query: %v", err)
 		return c.Status(404).SendString("Wrestler not found")
 	}
 	return c.JSON(w)

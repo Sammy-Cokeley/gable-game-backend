@@ -275,9 +275,20 @@ func GetUserGuesses(c *fiber.Ctx) error {
 	}
 
 	loc, _ := time.LoadLocation("America/New_York")
-	dateStr := time.Now().In(loc).Format("2006-01-02")
+	today := time.Now().In(loc).Format("2006-01-02")
 
-	rows, err := database.DB.Query(`
+	dateStr, err := resolveGameDate(c, today)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	seasonYear, err := seasonYearForDate(c.Context(), dateStr)
+	if err != nil {
+		log.Printf("GetUserGuesses: no puzzle for date %s: %v", dateStr, err)
+		return c.Status(404).JSON(fiber.Map{"error": "No puzzle found for that date"})
+	}
+
+	rows, err := database.DB.QueryContext(c.Context(), `
 		SELECT g.id, g.wrestler_id, w.full_name, wc.label, COALESCE(ws.class_year, ''),
 		       sc.name, COALESCE(co.name, ''),
 		       COALESCE(ws.win_percentage::TEXT, ''), COALESCE(ws.ncaa_finish, ''),
@@ -285,7 +296,7 @@ func GetUserGuesses(c *fiber.Ctx) error {
 		FROM user_guesses g
 		JOIN core.wrestler w             ON w.wrestlestat_id::INT = g.wrestler_id
 		JOIN core.wrestler_season ws     ON ws.wrestler_id = w.id
-		JOIN core.season se              ON se.id = ws.season_id AND se.year = 2026
+		JOIN core.season se              ON se.id = ws.season_id AND se.year = $3
 		JOIN core.weight_class wc        ON wc.id = ws.primary_weight_class_id
 		JOIN core.school sc              ON sc.id = ws.school_id
 		LEFT JOIN core.school_conference_season scs
@@ -293,10 +304,10 @@ func GetUserGuesses(c *fiber.Ctx) error {
 		LEFT JOIN core.conference co     ON co.id = scs.conference_id
 		WHERE g.user_id = $1 AND g.guess_date = $2
 		ORDER BY g.guess_order ASC
-	`, userID, dateStr)
+	`, userID, dateStr, seasonYear)
 
 	if err != nil {
-		log.Printf("DB query error: %v", err)
+		log.Printf("GetUserGuesses DB: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Could not load guesses",
 		})
@@ -334,6 +345,7 @@ func UpdateUserStats(c *fiber.Ctx) error {
 	type Input struct {
 		Result  string `json:"result"`
 		Guesses int    `json:"guesses"` // 1–8
+		Mode    string `json:"mode"`    // "daily" (default) or "archive"
 	}
 
 	var input Input
@@ -343,6 +355,10 @@ func UpdateUserStats(c *fiber.Ctx) error {
 
 	if input.Result != "win" && input.Result != "loss" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid result type"})
+	}
+
+	if input.Mode == "archive" {
+		return c.JSON(fiber.Map{"message": "Archive play — stats not updated"})
 	}
 
 	loc, _ := time.LoadLocation("America/New_York")
