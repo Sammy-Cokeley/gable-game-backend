@@ -44,7 +44,7 @@ func main() {
 	ctx := context.Background()
 	for _, w := range weights {
 		log.Printf("=== Weight class %d ===", w)
-		entries, err := wrestlestat.ScrapeStartersByWeight(client, w)
+		entries, err := wrestlestat.ScrapeStartersByWeight(client, w, *season)
 		if err != nil {
 			log.Printf("  ERROR scraping %d: %v", w, err)
 			continue
@@ -60,7 +60,7 @@ func main() {
 			e := &entries[i]
 
 			if !*skipFinish {
-				if err := wrestlestat.FetchNCAAFinish(client, e); err != nil {
+				if err := wrestlestat.FetchNCAAFinish(client, e, *season); err != nil {
 					log.Printf("  WARN: profile fetch failed for %s (wsid=%d): %v", e.Name, e.WrestleStatID, err)
 				}
 				time.Sleep(*delay)

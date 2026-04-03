@@ -37,8 +37,15 @@ var (
 // weight class and returns all wrestler entries found. Each entry is populated with
 // name, school, conference, record, class year, and WrestleStat ID.
 // NCAAFinish is left empty — call FetchNCAAFinish to populate it.
-func ScrapeStartersByWeight(client *http.Client, weightClass int) ([]WrestlerEntry, error) {
-	url := fmt.Sprintf("https://www.wrestlestat.com/d1/rankings/starters/weight/%d", weightClass)
+// Pass seasonYear=0 to use the current-season URL; pass a specific year (e.g. 2024)
+// to use the year-indexed archive URL.
+func ScrapeStartersByWeight(client *http.Client, weightClass int, seasonYear int) ([]WrestlerEntry, error) {
+	var url string
+	if seasonYear == 0 {
+		url = fmt.Sprintf("https://www.wrestlestat.com/d1/rankings/starters/weight/%d", weightClass)
+	} else {
+		url = fmt.Sprintf("https://www.wrestlestat.com/d1/season/%d/rankings/starters/weight/%d", seasonYear, weightClass)
+	}
 	doc, err := fetchDoc(client, url)
 	if err != nil {
 		return nil, err
@@ -122,9 +129,10 @@ func ScrapeStartersByWeight(client *http.Client, weightClass int) ([]WrestlerEnt
 }
 
 // FetchNCAAFinish fetches the wrestler's WrestleStat profile page and sets
-// entry.NCAAFinish if a 2026 NCAA placement is found. If no placement is found,
-// NCAAFinish remains empty (the wrestler was not a qualifier or did not place).
-func FetchNCAAFinish(client *http.Client, entry *WrestlerEntry) error {
+// entry.NCAAFinish for the given season year. Pass seasonYear=0 to use the
+// most recent season (existing behavior). If no placement is found for that
+// year, NCAAFinish remains empty (the wrestler was not a qualifier).
+func FetchNCAAFinish(client *http.Client, entry *WrestlerEntry, seasonYear int) error {
 	url := fmt.Sprintf(
 		"https://www.wrestlestat.com/wrestler/%d/%s/profile",
 		entry.WrestleStatID, nameToSlug(entry.Name),
@@ -136,7 +144,7 @@ func FetchNCAAFinish(client *http.Client, entry *WrestlerEntry) error {
 		return err
 	}
 
-	entry.NCAAFinish = parseNCAAFinish(doc)
+	entry.NCAAFinish = parseNCAAFinish(doc, seasonYear)
 
 	// Also refresh wins/losses from profile if starters page had zeros
 	if entry.Wins == 0 && entry.Losses == 0 {
@@ -272,19 +280,49 @@ var validNCAAFinish = map[string]bool{
 	"R12": true, "R16": true, "NQ": true,
 }
 
-// parseNCAAFinish reads the first <span class="badge bg-light text-dark fw-bold">
-// element inside the profile's main responsive table. WrestleStat uses this badge
-// for NCAA tournament finishes (1st–8th, R12, R16, NQ). If the wrestler competed
-// at NCAAs in prior years the page may have multiple such badges; we want the first
-// one which corresponds to the current/most-recent season row.
-func parseNCAAFinish(doc *goquery.Document) string {
+// parseNCAAFinish reads NCAA tournament finish badge(s) from the profile's main
+// responsive table. WrestleStat shows one row per season, each potentially
+// containing a badge (1st–8th, R12, R16, NQ).
+// When seasonYear is 0, returns the first/most-recent badge (existing behavior).
+// When seasonYear is non-zero, finds the row whose first cell contains that year
+// and returns the badge from that specific row.
+//
+// Note: WrestleStat rows use the season end-year (e.g. "2024" for 2023-24).
+// If the site instead shows academic-year format ("2023-24"), update the yearStr
+// format to: fmt.Sprintf("%d-%02d", seasonYear-1, seasonYear%100)
+func parseNCAAFinish(doc *goquery.Document, seasonYear int) string {
+	if seasonYear == 0 {
+		return parseFirstNCAABadge(doc)
+	}
+	yearStr := strconv.Itoa(seasonYear)
+	var found string
+	doc.Find("div.table-responsive.d-none.d-sm-block tr").EachWithBreak(func(_ int, row *goquery.Selection) bool {
+		if !strings.Contains(row.Find("td").First().Text(), yearStr) {
+			return true // not this row
+		}
+		row.Find("span.badge.bg-light.text-dark.fw-bold").EachWithBreak(func(_ int, s *goquery.Selection) bool {
+			text := strings.TrimSpace(s.Text())
+			if validNCAAFinish[text] {
+				found = text
+				return false
+			}
+			return true
+		})
+		return false // stop after matching row
+	})
+	return found
+}
+
+// parseFirstNCAABadge returns the first valid NCAA finish badge on the page,
+// corresponding to the most recent season.
+func parseFirstNCAABadge(doc *goquery.Document) string {
 	var found string
 	doc.Find("div.table-responsive.d-none.d-sm-block span.badge.bg-light.text-dark.fw-bold").
 		EachWithBreak(func(_ int, s *goquery.Selection) bool {
 			text := strings.TrimSpace(s.Text())
 			if validNCAAFinish[text] {
 				found = text
-				return false // stop at first match
+				return false
 			}
 			return true
 		})
