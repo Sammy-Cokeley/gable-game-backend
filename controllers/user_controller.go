@@ -212,14 +212,15 @@ func Login(c *fiber.Ctx) error {
 }
 
 func GetMe(c *fiber.Ctx) error {
-	user := c.Locals("user").(*jwt.Token)
-	claims := user.Claims.(jwt.MapClaims)
-	userID := claims["user_id"].(float64)
+	userID, ok := c.Locals("user_id").(int)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
 
 	var userData models.User
 	err := database.DB.QueryRow(`
 		SELECT id, email FROM users WHERE id = $1
-	`, int(userID)).Scan(&userData.ID, &userData.Email)
+	`, userID).Scan(&userData.ID, &userData.Email)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
 	}
